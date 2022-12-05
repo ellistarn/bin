@@ -33,12 +33,20 @@ type BlameCfn struct {
 
 func (b BlameCfn) Summarize(ctx context.Context) (actions []Action) {
 	stacks := lo.Must(b.cfn.ListStacksWithContext(ctx, &cloudformation.ListStacksInput{})).StackSummaries
+	// Get all actions
 	for _, stack := range stacks {
 		actions = append(actions, b.summarizeStack(ctx, stack)...)
 	}
-	sort.SliceStable(actions, func(i, j int) bool { return actions[i].Duration > actions[j].Duration })
-	sort.SliceStable(actions, func(i, j int) bool { return !actions[i].Success })
-	log.From(ctx).Infof("Found %d actions across %d stacks", len(actions), len(stacks))
+	// Limit to last 90 days
+	actions = lo.Filter(actions, func(action Action, _ int) bool { return time.Since(action.Start) < 24*90*time.Hour })
+	// Get the oldest event
+	sort.SliceStable(actions, func(i, j int) bool { return actions[i].Start.Before(actions[j].Start) })
+	oldest := lo.TernaryF(len(actions) > 0, func() time.Time { return actions[0].Start }, func() time.Time { return time.Now() })
+	// Sort by longest duration
+	sort.SliceStable(actions, func(i, j int) bool {
+		return actions[i].End.Sub(actions[i].Start) > actions[j].End.Sub(actions[j].Start)
+	})
+	log.From(ctx).Infof("Found %d actions across %d stacks since %s", len(actions), len(stacks), oldest)
 	return actions
 }
 
@@ -90,7 +98,8 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 			StackId:   lo.FromPtr(stack.StackId),
 			Situation: lo.FromPtr(chunk[0].ResourceStatus),
 			Outcome:   lo.FromPtr(chunk[1].ResourceStatus),
-			Duration:  chunk[1].Timestamp.Sub(lo.FromPtr(chunk[0].Timestamp)),
+			Start:     lo.FromPtr(chunk[0].Timestamp),
+			End:       lo.FromPtr(chunk[1].Timestamp),
 			Success: lo.Contains([]string{
 				"CREATE_COMPLETE",
 				"UPDATE_COMPLETE",
@@ -104,7 +113,7 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 func (b BlameCfn) report(ctx context.Context, actions []Action) {
 	situationOutcomeActions := lo.GroupBy(actions, func(action Action) string { return fmt.Sprintf("%s -> %s", action.Situation, action.Outcome) })
 	for situationOutcome, actions := range situationOutcomeActions {
-		duration := lo.SumBy(actions, func(action Action) time.Duration { return action.Duration })
+		duration := lo.SumBy(actions, func(action Action) time.Duration { return action.End.Sub(action.Start) })
 		log.From(ctx).Infof("%d x %s:\t%s (avg: %s)", len(actions), situationOutcome, duration, time.Duration(int(duration)/len(actions)))
 	}
 }
@@ -114,5 +123,6 @@ type Action struct {
 	Situation string
 	Outcome   string
 	Success   bool
-	Duration  time.Duration
+	Start     time.Time
+	End       time.Time
 }
