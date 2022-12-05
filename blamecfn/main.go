@@ -105,7 +105,7 @@ func (b BlameCfn) report(ctx context.Context, actions []Action) {
 	situationOutcomeActions := lo.GroupBy(actions, func(action Action) string { return fmt.Sprintf("%s -> %s", action.Situation, action.Outcome) })
 	for situationOutcome, actions := range situationOutcomeActions {
 		duration := lo.SumBy(actions, func(action Action) time.Duration { return action.Duration })
-		log.From(ctx).Infof("%s:\t%s", situationOutcome, duration)
+		log.From(ctx).Infof("%d x %s:\t%s (avg: %s)", len(actions), situationOutcome, duration, time.Duration(int(duration)/len(actions)))
 	}
 }
 
