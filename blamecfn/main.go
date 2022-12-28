@@ -8,23 +8,22 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
-	"github.com/ellistarn/bin/pkg/log"
 	"github.com/ellistarn/slang/pkg/pretty"
 	"github.com/samber/lo"
 )
 
 // A simple tool that shows how much time you've spent waiting for CFN
 func main() {
-	ctx := log.With(context.Background())
+	ctx := context.Background()
 	blameCfn := BlameCfn{
 		cfn: cloudformation.New(session.Must(session.NewSession())),
 	}
 	actions := blameCfn.Summarize(ctx)
 
-	log.From(ctx).Info("Things that went well:")
-	blameCfn.report(ctx, lo.Filter(actions, func(action Action, _ int) bool { return action.Success }))
-	log.From(ctx).Info("Things that didn't go so well:")
-	blameCfn.report(ctx, lo.Filter(actions, func(action Action, _ int) bool { return !action.Success }))
+	fmt.Printf("Things that went well:\n")
+	blameCfn.report(lo.Filter(actions, func(action Action, _ int) bool { return action.Success }))
+	fmt.Printf("Things that didn't go so well:\n")
+	blameCfn.report(lo.Filter(actions, func(action Action, _ int) bool { return !action.Success }))
 }
 
 type BlameCfn struct {
@@ -46,7 +45,7 @@ func (b BlameCfn) Summarize(ctx context.Context) (actions []Action) {
 	sort.SliceStable(actions, func(i, j int) bool {
 		return actions[i].End.Sub(actions[i].Start) > actions[j].End.Sub(actions[j].Start)
 	})
-	log.From(ctx).Infof("Found %d actions across %d stacks since %s", len(actions), len(stacks), oldest)
+	fmt.Printf("Found %d actions across %d stacks since %s\n", len(actions), len(stacks), oldest)
 	return actions
 }
 
@@ -79,7 +78,7 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 			"UPDATE_IN_PROGRESS",
 			"DELETE_IN_PROGRESS",
 		}, lo.FromPtr(chunk[0].ResourceStatus)) {
-			log.From(ctx).Errorf("ignoring event that should have been user triggered, but wasn't\n%s", pretty.Verbose(chunk[0]))
+			fmt.Printf("ignoring event that should have been user triggered, but wasn't\n%s\n", pretty.Verbose(chunk[0]))
 			continue
 		}
 		if !lo.Contains([]string{
@@ -90,7 +89,7 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 			"ROLLBACK_COMPLETE",
 			"UPDATE_ROLLBACK_COMPLETE",
 		}, lo.FromPtr(chunk[1].ResourceStatus)) {
-			log.From(ctx).Errorf("ignoring event that should have terminal, but wasn't\n%s", pretty.Verbose(chunk[1]))
+			fmt.Printf("ignoring event that should have terminal, but wasn't\n%s\n", pretty.Verbose(chunk[1]))
 			continue
 		}
 
@@ -110,11 +109,11 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 	return actions
 }
 
-func (b BlameCfn) report(ctx context.Context, actions []Action) {
+func (b BlameCfn) report(actions []Action) {
 	situationOutcomeActions := lo.GroupBy(actions, func(action Action) string { return fmt.Sprintf("%s -> %s", action.Situation, action.Outcome) })
 	for situationOutcome, actions := range situationOutcomeActions {
 		duration := lo.SumBy(actions, func(action Action) time.Duration { return action.End.Sub(action.Start) })
-		log.From(ctx).Infof("%d x %s:\t%s (avg: %s)", len(actions), situationOutcome, duration, time.Duration(int(duration)/len(actions)))
+		fmt.Printf("%d x %s:\t%s (avg: %s)\n", len(actions), situationOutcome, duration, time.Duration(int(duration)/len(actions)))
 	}
 }
 
