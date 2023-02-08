@@ -12,25 +12,25 @@ import (
 	"github.com/samber/lo"
 )
 
-// A simple tool that shows how much time you've spent waiting for CFN
+// A simple tool that shows CFN execution times
 func main() {
 	ctx := context.Background()
-	blameCfn := BlameCfn{
+	cfnTime := CfnTime{
 		cfn: cloudformation.New(session.Must(session.NewSession())),
 	}
-	actions := blameCfn.Summarize(ctx)
+	actions := cfnTime.Summarize(ctx)
 
 	fmt.Printf("Things that went well:\n")
-	blameCfn.report(lo.Filter(actions, func(action Action, _ int) bool { return action.Success }))
+	cfnTime.report(lo.Filter(actions, func(action Action, _ int) bool { return action.Success }))
 	fmt.Printf("Things that didn't go so well:\n")
-	blameCfn.report(lo.Filter(actions, func(action Action, _ int) bool { return !action.Success }))
+	cfnTime.report(lo.Filter(actions, func(action Action, _ int) bool { return !action.Success }))
 }
 
-type BlameCfn struct {
+type CfnTime struct {
 	cfn *cloudformation.CloudFormation
 }
 
-func (b BlameCfn) Summarize(ctx context.Context) (actions []Action) {
+func (b CfnTime) Summarize(ctx context.Context) (actions []Action) {
 	stacks := lo.Must(b.cfn.ListStacksWithContext(ctx, &cloudformation.ListStacksInput{})).StackSummaries
 	// Get all actions
 	for _, stack := range stacks {
@@ -49,7 +49,7 @@ func (b BlameCfn) Summarize(ctx context.Context) (actions []Action) {
 	return actions
 }
 
-func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.StackSummary) (actions []Action) {
+func (b CfnTime) summarizeStack(ctx context.Context, stack *cloudformation.StackSummary) (actions []Action) {
 	var events []*cloudformation.StackEvent
 	var nextToken *string
 	for {
@@ -109,7 +109,7 @@ func (b BlameCfn) summarizeStack(ctx context.Context, stack *cloudformation.Stac
 	return actions
 }
 
-func (b BlameCfn) report(actions []Action) {
+func (b CfnTime) report(actions []Action) {
 	situationOutcomeActions := lo.GroupBy(actions, func(action Action) string { return fmt.Sprintf("%s -> %s", action.Situation, action.Outcome) })
 	for situationOutcome, actions := range situationOutcomeActions {
 		duration := lo.SumBy(actions, func(action Action) time.Duration { return action.End.Sub(action.Start) })

@@ -1,6 +1,6 @@
 Example Usage
 ```bash
-CMD=blamecfn
+CMD=cfntime
 go install github.com/ellistarn/bin/${CMD}@latest
 ${CMD}
 ```
