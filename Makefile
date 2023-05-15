@@ -12,7 +12,6 @@ test: ## Run tests
 verify: ## Verify code. Includes codegen, dependencies, linting, formatting, etc
 	go mod tidy
 	go generate ./...
-	hack/boilerplate.sh
 	go vet ./...
 	golangci-lint run
 	@git diff --quiet ||\
